@@ -20,7 +20,8 @@ a unique identity, even for agents sharing one machine and SSH account.
 The child inherits `LG_PLACE`, `LG_COORDINATOR`, `LG_USERNAME`, `LG_TOKEN`,
 `LG_SESSION_ID`, `LG_SESSION_PURPOSE`, and `LG_ARTIFACTS`. Native labgrid commands
 inside the child use that identity. Save logs and captures in `LG_ARTIFACTS`;
-the session already writes `session.json` there. Pass `-c ENV.yaml` before
+the session already writes `session.json` there. `python` and native labgrid
+commands inside the child use the client's installed environment. Pass `-c ENV.yaml` before
 `session` to supply `LG_ENV` to children. Shell expansion of those variables
 must happen inside the child, for example with `sh -c '...'`.
 
@@ -45,6 +46,8 @@ force-release command are not an authorization boundary.
 
 For Attractap, consult `apps/attractap-lab/README.md` in the current Attraccess
 checkout. Its `attractap-lab` CLI reuses the session claim and defaults output
-to `LG_ARTIFACTS`. A missing camera blocks real screen validation; do not count
+to `LG_ARTIFACTS`. Machines configured with the personal Nix profile supply
+`LG_COORDINATOR` and `~/.config/attractap-lab/reader.yaml`; when present, use
+that file with `attractap-lab --config`. A missing camera blocks real screen validation; do not count
 placeholder frames as evidence. Flashing a fresh merged image at offset zero
 may reset stored device configuration, so follow the firmware documentation.

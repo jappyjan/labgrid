@@ -4,9 +4,11 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 import psutil
@@ -15,6 +17,35 @@ import psutil
 def cli(*args, check=True):
     return subprocess.run([sys.executable, "-m", "labgrid.remote.client", *args],
                           capture_output=True, text=True, timeout=15, check=check)
+
+
+@pytest.fixture
+def coordinator(tmp_path, monkeypatch):
+    # Each run owns its port, even when another suite/coordinator runs locally.
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    monkeypatch.setenv("LG_COORDINATOR", f"127.0.0.1:{port}")
+    with (tmp_path / "coordinator.log").open("w+") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "labgrid.remote.coordinator", "-l", f"127.0.0.1:{port}"],
+            cwd=tmp_path, stdout=log, stderr=log)
+        try:
+            deadline = time.monotonic() + 10
+            while True:
+                assert process.poll() is None
+                try:
+                    with socket.create_connection(("127.0.0.1", port), timeout=.1):
+                        break
+                except OSError:
+                    assert time.monotonic() < deadline
+                    time.sleep(.05)
+            yield SimpleNamespace(suspend_tree=lambda: process.send_signal(signal.SIGSTOP),
+                                  resume_tree=lambda: process.send_signal(signal.SIGCONT))
+        finally:
+            process.send_signal(signal.SIGCONT)
+            process.terminate()
+            process.wait(timeout=15)
 
 
 @pytest.fixture
@@ -36,7 +67,7 @@ def start(tmp_path, name, *, place=None, code="import time; time.sleep(60)", tim
     process = subprocess.Popen(
         [sys.executable, "-m", "labgrid.remote.client", *args, "session",
          "--filter", "board=reader", "--purpose", name, "--artifacts", str(tmp_path),
-         "--wait-timeout", str(timeout), "--", sys.executable, "-c", script],
+         "--wait-timeout", str(timeout), "--", "python", "-c", script],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return process, marker
 

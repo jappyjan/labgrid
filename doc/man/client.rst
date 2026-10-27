@@ -34,6 +34,8 @@ share a host, login and SSH credentials. The child inherits that identity and
 The artifact directory is a unique subdirectory of ``--artifacts`` (default
 ``lab-artifacts``) and contains lifecycle metadata in ``session.json``.
 Child output remains attached to the caller; save evidence in ``LG_ARTIFACTS``.
+The client's Python environment is prepended to the child's ``PATH`` so Python
+scripts and native commands use the same installed dependencies.
 
 Use native commands inside the child without independently acquiring or
 releasing the place. Nested sessions are rejected. The child and descendants

@@ -79,6 +79,9 @@ async def run_session(session, *, user_error, command_error):
         metadata.update(place=place, state="running")
         record()
         child_env = os.environ.copy()
+        # Children use the same installed client and Python dependencies, even
+        # when this executable was launched through a uv tool installation.
+        child_env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + child_env.get("PATH", "")
         child_env.update(LG_SESSION_ID=args.session_id, LG_SESSION_PURPOSE=args.purpose,
                          LG_PLACE=place, LG_TOKEN=token, LG_COORDINATOR=session.address,
                          LG_ARTIFACTS=str(artifacts))
