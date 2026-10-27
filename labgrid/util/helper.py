@@ -97,6 +97,12 @@ class ProcessWrapper:
                         break
                     raise
 
+                if raw == b"":
+                    # EOF: unlike Linux (EIO), macOS signals that all slave fds
+                    # are closed by returning EOF on the master, and select()
+                    # keeps reporting it readable
+                    break
+
                 if raw:
                     buf += raw
                     *parts, buf = buf.split(b'\r')
