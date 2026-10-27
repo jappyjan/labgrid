@@ -105,6 +105,10 @@ class ClientSession:
     def getuser(self):
         return os.environ.get("LG_USERNAME", getuser())
 
+    async def run_session(self):
+        from .session import run_session
+        await run_session(self, user_error=UserError, command_error=InteractiveCommandError)
+
     def __attrs_post_init__(self):
         """Actions which are executed if a connection is successfully opened."""
         self.stopping = asyncio.Event()
@@ -2200,6 +2204,14 @@ def get_parser(auto_doc_mode=False) -> "argparse.ArgumentParser | AutoProgramArg
     subparser.add_argument("filename", help="filename to boot on the target")
     subparser.set_defaults(func=ClientSession.write_image)
 
+    subparser = subparsers.add_parser("session", help="reserve a place for an isolated child command")
+    subparser.add_argument("--filter", action="append", default=[], metavar="KEY=VALUE")
+    subparser.add_argument("--wait-timeout", type=float, default=300, help="allocation timeout in seconds")
+    subparser.add_argument("--purpose", required=True, help="task or thread description")
+    subparser.add_argument("--artifacts", default="lab-artifacts", help="parent for a unique session directory")
+    subparser.add_argument("child", nargs=argparse.REMAINDER, help="-- COMMAND [ARG ...]")
+    subparser.set_defaults(func=ClientSession.run_session, allow_unmatched=False)
+
     subparser = subparsers.add_parser("reserve", help="create a reservation")
     subparser.add_argument("--wait", action="store_true", help="wait until the reservation is allocated")
     subparser.add_argument("--shell", action="store_true", help="format output as shell variables")
@@ -2288,6 +2300,23 @@ def main():
             print("Please provide a token", file=sys.stderr)
             exit(1)
 
+    if args.command == "session":
+        import math
+        import uuid
+        if os.environ.get("LG_SESSION_ID"):
+            parser.error("already inside a session; run commands directly within it")
+        if not math.isfinite(args.wait_timeout) or args.wait_timeout <= 0:
+            parser.error("--wait-timeout must be a finite positive number")
+        if args.child[:1] == ["--"]:
+            args.child = args.child[1:]
+        if not args.child:
+            parser.error("session requires -- COMMAND [ARG ...]")
+        if not args.place and not args.filter:
+            parser.error("session requires --place or --filter")
+        # Distinguish even same-user, same-host clients, including native release checks.
+        args.session_id = uuid.uuid4().hex
+        os.environ["LG_USERNAME"] = f"{os.environ.get('LG_USERNAME', getuser())}-{args.session_id}"
+
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
     if args.verbose > 1:
@@ -2310,7 +2339,7 @@ def main():
         env = Environment(config_file=args.config)
 
     role = None
-    if args.command != "reserve" and env and env.config.get_targets():
+    if args.command not in ["reserve", "session"] and env and env.config.get_targets():
         if args.place:
             if not args.place.startswith("+"):
                 role = find_role_by_place(env.config.get_targets(), args.place)
@@ -2357,7 +2386,26 @@ def main():
                         coro = args.func(session, place, target)
                     else:
                         coro = args.func(session)
-                    session.loop.run_until_complete(coro)
+                    if args.command == "session":
+                        task = session.loop.create_task(coro)
+                        interrupted = []
+                        def cancel_session(signum):
+                            if not interrupted:
+                                interrupted.append(signum)
+                                task.cancel()
+                        previous_signals = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+                        for sig in previous_signals:
+                            session.loop.add_signal_handler(sig, cancel_session, sig)
+                        try:
+                            session.loop.run_until_complete(task)
+                        except asyncio.CancelledError:
+                            exitcode = 128 + interrupted[0] if interrupted else 1
+                        finally:
+                            for sig, handler in previous_signals.items():
+                                session.loop.remove_signal_handler(sig)
+                                signal.signal(sig, handler)
+                    else:
+                        session.loop.run_until_complete(coro)
                 else:
                     args.func(session)
             finally:
