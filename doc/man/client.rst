@@ -49,7 +49,7 @@ operation, then deliberately recover with ``release --kick`` and
 ``cancel-reservation TOKEN``. There is no automatic takeover or claim expiry.
 This coordinates trusted clients; identity variables are not authentication.
 
-Install the optional agent skill by linking ``contrib/skills/labgrid`` into
+Install the optional agent skill by linking ``skills/labgrid`` into
 your agent's global skills directory. No MCP server is required. This client
 extension is based on labgrid 26.0.1 and requires no coordinator/exporter
 changes when connecting to a labgrid 26.x deployment.
