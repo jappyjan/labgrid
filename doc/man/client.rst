@@ -13,6 +13,45 @@ This is the client to control a boards status and interface with it on remote ma
 .. autoprogram:: labgrid.remote.client:get_parser(auto_doc_mode=True)
    :prog: labgrid-client
 
+Isolated command sessions (JappyJan fork)
+----------------------------------------
+
+Use a single session for a complete hardware operation. Build before reserving::
+
+   labgrid-client -x lab-host:20408 session --filter board=reader \
+       --purpose 'ATT-1154: firmware validation' --wait-timeout 300 \
+       -- sh -c 'labgrid-client show; python validate.py'
+
+Use ``-p reader-1`` before ``session`` to reserve one specific place, or repeated
+``--filter KEY=VALUE`` arguments to select any compatible place. Reservations
+use the coordinator's existing priority/age scheduler. The allocation wait is
+bounded; the child command's duration is not limited.
+
+Each invocation has a unique native client identity, including when clients
+share a host, login and SSH credentials. The child inherits that identity and
+``LG_PLACE``, ``LG_TOKEN``, ``LG_COORDINATOR``, ``LG_SESSION_ID``,
+``LG_SESSION_PURPOSE`` and ``LG_ARTIFACTS``. ``-c ENV.yaml`` supplies ``LG_ENV``.
+The artifact directory is a unique subdirectory of ``--artifacts`` (default
+``lab-artifacts``) and contains lifecycle metadata in ``session.json``.
+Child output remains attached to the caller; save evidence in ``LG_ARTIFACTS``.
+
+Use native commands inside the child without independently acquiring or
+releasing the place. Nested sessions are rejected. The child and descendants
+are stopped before the reservation and claim are released, including on
+failure, SIGINT or SIGTERM. The command's exit status is preserved.
+A lost claim or failed reservation keepalive stops the child.
+
+SIGKILL of the parent and host failure can leave a claim and child processes
+behind. Inspect ``who``, metadata and process state, stop the abandoned hardware
+operation, then deliberately recover with ``release --kick`` and
+``cancel-reservation TOKEN``. There is no automatic takeover or claim expiry.
+This coordinates trusted clients; identity variables are not authentication.
+
+Install the optional agent skill by linking ``contrib/skills/labgrid`` into
+your agent's global skills directory. No MCP server is required. This client
+extension is based on labgrid 26.0.1 and requires no coordinator/exporter
+changes when connecting to a labgrid 26.x deployment.
+
 Configuration File
 ------------------
 The configuration file follows the description in ``labgrid-device-config``\(5).
